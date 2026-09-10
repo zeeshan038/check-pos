@@ -154,58 +154,72 @@ export default function Purchases() {
 
       {/* ── Add Purchase Modal ── */}
       {isModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4">
-          <div className="floating-card w-full max-w-md p-6 relative">
-            <button 
-              className="absolute top-4 right-4 text-secondary hover:text-primary transition-colors"
-              onClick={() => setIsModalOpen(false)}
-            >
-              <X size={20} />
-            </button>
-            <h2 className="text-xl font-bold mb-6 text-primary">Add New Purchase</h2>
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-box" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <div className="modal-icon"><Plus size={20} /></div>
+                <div>
+                  <h2 className="modal-title">Add New Purchase</h2>
+                  <p className="modal-subtitle">Record a new inward stock purchase</p>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setIsModalOpen(false)}><X size={20} /></button>
+            </div>
+            
             <form onSubmit={handleAddPurchase}>
-              <div className="mb-4">
-                <label className="block text-sm text-secondary mb-2">Supplier Name</label>
-                <input 
-                  type="text" 
-                  className="w-full bg-[#18181b] border border-[#27272a] rounded-lg px-4 py-2 text-primary focus:outline-none focus:border-accent transition-colors"
-                  style={{ backgroundColor: '#18181b', color: '#fff', borderColor: '#27272a' }}
-                  placeholder="e.g. Mian Farms"
-                  value={newPurchase.supplier}
-                  onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })}
-                  required
-                />
+              <div className="modal-body" style={{ gap: '16px' }}>
+                <div className="modal-field">
+                  <label className="modal-label">Supplier Name <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="text" 
+                      className="modal-input"
+                      placeholder="e.g. Mian Farms"
+                      value={newPurchase.supplier}
+                      onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div className="modal-field">
+                  <label className="modal-label">Total Weight (Mans) <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      className="modal-input"
+                      placeholder="e.g. 200"
+                      value={newPurchase.weight}
+                      onChange={(e) => setNewPurchase({ ...newPurchase, weight: e.target.value })}
+                      required
+                    />
+                    <span className="input-suffix">Man</span>
+                  </div>
+                </div>
+                
+                <div className="modal-field">
+                  <label className="modal-label">Price per Man (₨) <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <span className="input-prefix">₨</span>
+                    <input 
+                      type="number" 
+                      step="1"
+                      className="modal-input"
+                      placeholder="e.g. 12000"
+                      value={newPurchase.price}
+                      onChange={(e) => setNewPurchase({ ...newPurchase, price: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-sm text-secondary mb-2">Total Weight (Mans)</label>
-                <input 
-                  type="number" 
-                  step="0.1"
-                  className="w-full bg-[#18181b] border border-[#27272a] rounded-lg px-4 py-2 text-primary focus:outline-none focus:border-accent transition-colors"
-                  style={{ backgroundColor: '#18181b', color: '#fff', borderColor: '#27272a' }}
-                  placeholder="e.g. 200"
-                  value={newPurchase.weight}
-                  onChange={(e) => setNewPurchase({ ...newPurchase, weight: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm text-secondary mb-2">Price per Man (₨)</label>
-                <input 
-                  type="number" 
-                  step="1"
-                  className="w-full bg-[#18181b] border border-[#27272a] rounded-lg px-4 py-2 text-primary focus:outline-none focus:border-accent transition-colors"
-                  style={{ backgroundColor: '#18181b', color: '#fff', borderColor: '#27272a' }}
-                  placeholder="e.g. 12000"
-                  value={newPurchase.price}
-                  onChange={(e) => setNewPurchase({ ...newPurchase, price: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-3">
+
+              <div className="modal-footer">
                 <button 
                   type="button" 
-                  className="px-4 py-2 text-secondary hover:text-primary transition-colors"
+                  className="modal-cancel"
                   onClick={() => setIsModalOpen(false)}
                 >
                   Cancel
@@ -213,10 +227,9 @@ export default function Purchases() {
                 <button 
                   type="submit" 
                   disabled={isSubmitting}
-                  className="action-btn"
-                  style={{ backgroundColor: 'var(--accent-primary)', color: '#fff', border: 'none' }}
+                  className="modal-submit"
                 >
-                  {isSubmitting ? 'Adding...' : 'Save Purchase'}
+                  <Plus size={18} /> {isSubmitting ? 'Adding...' : 'Save Purchase'}
                 </button>
               </div>
             </form>

@@ -1,6 +1,6 @@
 // src/pages/Ledger.jsx
 import { useState } from 'react';
-import { UserPlus, Phone, Users, ChevronRight } from 'lucide-react';
+import { UserPlus, Phone, Users, ChevronRight, MessageCircle } from 'lucide-react';
 import GlobalHeader          from '../components/GlobalHeader';
 import AddShopkeeperModal    from '../components/AddShopkeeperModal';
 import ShopkeeperDetailsModal from '../components/ShopkeeperDetailsModal';
@@ -18,6 +18,39 @@ export default function Ledger() {
       (acc.phone && acc.phone.toLowerCase().includes(q))
     );
   });
+
+  const handleSendReminder = (acc) => {
+    if (!acc.phone) {
+      alert("No phone number available for this shopkeeper.");
+      return;
+    }
+
+    const pending = (acc.totalSales || 0) - (acc.totalPaid || 0);
+    if (pending <= 0) {
+      alert("This shopkeeper has no pending balance.");
+      return;
+    }
+
+    // Use current date
+    const dateStr = new Date().toLocaleDateString('ur-PK', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const message = `*تاریخ:* ${dateStr}
+*دکاندار کا نام:* *_${acc.name}_*
+
+*ٹوٹل بقایا:* ${pending.toLocaleString()} روپے
+
+براہ کرم اپنا بقایا جلد از جلد کلیئر کریں۔ شکریہ!`;
+
+    // Normalize phone number (e.g. 0301... to 92301...)
+    let phoneStr = acc.phone.trim();
+    if (phoneStr.startsWith('03')) {
+      phoneStr = '92' + phoneStr.substring(1);
+    }
+    phoneStr = phoneStr.replace(/[^0-9]/g, '');
+
+    const whatsappUrl = `https://wa.me/${phoneStr}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
 
   return (
     <div className="animate-fade-in">
@@ -118,13 +151,26 @@ export default function Ledger() {
                         )}
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="action-btn"
-                          style={{ padding: '6px 12px', fontSize: '0.8rem', backgroundColor: '#27272a', color: '#fafafa' }}
-                          onClick={() => setSelectedShopkeeper(acc)}
-                        >
-                          Details <ChevronRight size={14} />
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            className="action-btn"
+                            style={{ padding: '6px 12px', fontSize: '0.8rem', backgroundColor: '#27272a', color: '#fafafa' }}
+                            onClick={() => setSelectedShopkeeper(acc)}
+                          >
+                            Details <ChevronRight size={14} />
+                          </button>
+                          
+                          {pending > 0 && acc.phone && (
+                            <button
+                              className="action-btn"
+                              style={{ padding: '6px 10px', fontSize: '0.8rem', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.2)' }}
+                              onClick={() => handleSendReminder(acc)}
+                              title="Send Reminder on WhatsApp"
+                            >
+                              <MessageCircle size={16} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

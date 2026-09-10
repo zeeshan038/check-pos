@@ -20,6 +20,7 @@ export default function NewSaleModal({ onClose, onSave, batches, shopkeepers }) 
     weight: '',
     rate: '',
     paymentStatus: 'Paid',
+    paymentMethod: 'Cash',
     notes: '',
   });
   const [errors, setErrors] = useState({});
@@ -188,6 +189,29 @@ export default function NewSaleModal({ onClose, onSave, batches, shopkeepers }) 
               </button>
             </div>
           </div>
+
+          {/* Payment Method (if Paid) */}
+          {form.paymentStatus === 'Paid' && (
+            <div className="modal-field">
+              <label className="modal-label">Payment Method</label>
+              <div className="payment-toggle">
+                <button
+                  className={`pay-btn ${form.paymentMethod === 'Cash' ? 'pay-active-paid' : ''}`}
+                  onClick={() => handleChange('paymentMethod', 'Cash')}
+                  style={{ opacity: form.paymentMethod === 'Cash' ? 1 : 0.6 }}
+                >
+                  Cash
+                </button>
+                <button
+                  className={`pay-btn ${form.paymentMethod === 'Bank Transfer' ? 'pay-active-paid' : ''}`}
+                  onClick={() => handleChange('paymentMethod', 'Bank Transfer')}
+                  style={{ opacity: form.paymentMethod === 'Bank Transfer' ? 1 : 0.6 }}
+                >
+                  Bank Transfer
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="modal-field">

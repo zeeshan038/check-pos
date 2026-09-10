@@ -19,8 +19,12 @@ export default function AddShopkeeperModal({ onClose }) {
     const e = {};
     if (!form.name.trim())  e.name  = 'Name is required';
     if (!form.phone.trim()) e.phone = 'Phone number is required';
-    else if (!/^[0-9+\-\s]{10,15}$/.test(form.phone.trim()))
-      e.phone = 'Enter a valid phone number';
+    else {
+      const digits = form.phone.replace(/[^0-9]/g, '');
+      if (digits.length < 10) {
+        e.phone = 'Enter a valid phone number (at least 10 digits)';
+      }
+    }
     return e;
   }
 

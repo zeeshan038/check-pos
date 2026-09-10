@@ -8,8 +8,11 @@ import {
   ShoppingCart,
   Plus,
   Bird,
+  LogOut,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { auth } from '../firebase';
+import { signOut } from 'firebase/auth';
 
 const navItems = [
   { path: '/dashboard',  label: 'Dashboard',  icon: <LayoutDashboard size={20} /> },
@@ -45,6 +48,24 @@ export default function Sidebar() {
             <span>{item.label}</span>
           </NavLink>
         ))}
+        
+        <div style={{ flexGrow: 1 }}></div>
+        
+        <button 
+          className="nav-item"
+          style={{ 
+            marginTop: 'auto', 
+            background: 'transparent', 
+            border: 'none', 
+            width: '100%', 
+            textAlign: 'left', 
+            color: '#ef4444' 
+          }}
+          onClick={() => signOut(auth)}
+        >
+          <LogOut size={20} />
+          <span>Logout</span>
+        </button>
       </nav>
     </aside>
   );

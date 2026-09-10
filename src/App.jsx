@@ -6,12 +6,16 @@ import { AppProvider, useApp } from './context/AppContext';
 import Sidebar      from './components/Sidebar';
 import BottomNav    from './components/BottomNav';
 import NewSaleModal from './components/NewSaleModal';
+import { MessageCircle, CheckCircle, X } from 'lucide-react';
 
-import Dashboard  from './pages/Dashboard';
-import Inventory  from './pages/Inventory';
-import Ledger     from './pages/Ledger';
-import Sales      from './pages/Sales';
-import Purchases  from './pages/Purchases';
+import Dashboard    from './pages/Dashboard';
+import Inventory    from './pages/Inventory';
+import BatchDetails from './pages/BatchDetails';
+import Ledger       from './pages/Ledger';
+import Sales        from './pages/Sales';
+import Purchases    from './pages/Purchases';
+import Login        from './pages/Login';
+import ProtectedRoute from './components/ProtectedRoute';
 
 import { useState, useEffect } from 'react';
 import { db } from './firebase';
@@ -21,6 +25,7 @@ import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc, query, ord
 function Layout() {
   const { showNewSaleModal, closeSaleModal, shopkeepers } = useApp();
   const [inventoryBatches, setInventoryBatches] = useState([]);
+  const [saleSuccessData, setSaleSuccessData] = useState(null);
 
   useEffect(() => {
     const q = query(collection(db, 'inventoryBatches'), orderBy('createdAt', 'desc'));
@@ -66,9 +71,10 @@ function Layout() {
         shopkeeperName: shopkeeper.name,
         batchId: data.batchId,
         weight: data.weight,
-        rate: data.rate,
+        rate: parseFloat(data.rate),
         total: data.total,
         paymentStatus: data.paymentStatus,
+        paymentMethod: data.paymentStatus === 'Paid' ? data.paymentMethod : null,
         notes: data.notes,
         date: formattedDate,
         createdAt: serverTimestamp()
@@ -95,20 +101,44 @@ function Layout() {
       // 3. Update Shopkeeper Ledger
       const shopRef = doc(db, 'shopkeepers', shopkeeper.id);
       const shopSnap = await getDoc(shopRef);
+      let oldPending = 0;
+      let totalPending = 0;
+      let receivedAmount = 0;
+
       if (shopSnap.exists()) {
         const shopData = shopSnap.data();
+        oldPending = (shopData.totalSales || 0) - (shopData.totalPaid || 0);
+        
         let updatedSales = (shopData.totalSales || 0) + data.total;
         let updatedPaid = (shopData.totalPaid || 0);
         
         if (data.paymentStatus === 'Paid') {
           updatedPaid += data.total;
+          receivedAmount = data.total;
         }
+
+        totalPending = updatedSales - updatedPaid;
 
         await updateDoc(shopRef, {
           totalSales: updatedSales,
           totalPaid: updatedPaid
         });
       }
+
+      // 4. Trigger Success Modal
+      setSaleSuccessData({
+        shopkeeperName: shopkeeper.name,
+        shopkeeperPhone: shopkeeper.phone || '',
+        weight: data.weight,
+        rate: data.rate,
+        total: data.total,
+        paymentStatus: data.paymentStatus,
+        paymentMethod: data.paymentStatus === 'Paid' ? data.paymentMethod : null,
+        date: formattedDate,
+        oldPending,
+        totalPending,
+        receivedAmount
+      });
 
       closeSaleModal();
     } catch (error) {
@@ -134,6 +164,68 @@ function Layout() {
         />
       )}
 
+      {/* Sale Success Modal */}
+      {saleSuccessData && (
+        <div className="modal-overlay" onClick={() => setSaleSuccessData(null)} style={{ backdropFilter: 'blur(4px)' }}>
+          <div className="modal-box relative animate-scale-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px', padding: '40px 32px' }}>
+            <button className="modal-close" onClick={() => setSaleSuccessData(null)} style={{ position: 'absolute', top: '16px', right: '16px' }}>
+              <X size={20} />
+            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginTop: '10px' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'rgba(34, 197, 94, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
+                <CheckCircle size={40} className="text-success" />
+              </div>
+              <h2 className="text-2xl font-bold text-white" style={{ marginBottom: '12px' }}>Sale Recorded!</h2>
+              <p className="text-secondary text-sm" style={{ marginBottom: '32px', lineHeight: '1.6', maxWidth: '90%' }}>
+                The sale has been successfully added to the ledger and stock updated.
+              </p>
+              
+              <div style={{ display: 'flex', width: '100%', gap: '12px' }}>
+                <button 
+                  className="action-btn"
+                  style={{ flex: 1, backgroundColor: '#27272a', color: '#e4e4e7', border: '1px solid #3f3f46', padding: '12px', fontSize: '15px' }}
+                  onClick={() => setSaleSuccessData(null)}
+                >
+                  Done
+                </button>
+                <button 
+                  className="action-btn flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                  style={{ flex: 1.5, backgroundColor: '#25D366', color: '#fff', border: 'none', padding: '12px', fontSize: '15px', boxShadow: '0 4px 12px rgba(37, 211, 102, 0.25)' }}
+                  onClick={() => {
+                    const currentSalePending = saleSuccessData.total - saleSuccessData.receivedAmount;
+                    let message = `*تاریخ:* ${saleSuccessData.date}\n*دکاندار کا نام:* *_${saleSuccessData.shopkeeperName}_*\n\n*تفصیل*\t\t*رقم*\n*نیا مال*\t\t${saleSuccessData.total.toLocaleString()} روپے\n*پرانا بقایا*\t${saleSuccessData.oldPending.toLocaleString()} روپے\n*وصول رقم*\t*${saleSuccessData.receivedAmount.toLocaleString()} روپے*\n*بقایا رقم*\t\t${currentSalePending.toLocaleString()} روپے\n*ٹوٹل بقایا*\t${saleSuccessData.totalPending.toLocaleString()} روپے`;
+                    
+                    if (saleSuccessData.paymentMethod) {
+                      message += `\n\n*طریقہ ادائیگی:* ${saleSuccessData.paymentMethod}`;
+                    }
+                    
+                    let phone = (saleSuccessData.shopkeeperPhone || '').replace(/\D/g, '');
+                    // Handle Pakistani local number formats (0300... -> 92300...)
+                    if (phone.startsWith('0')) {
+                      phone = '92' + phone.substring(1);
+                    } else if (phone.length === 10 && phone.startsWith('3')) {
+                      phone = '92' + phone;
+                    }
+
+                    let waUrl = '';
+                    if (phone) {
+                      waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+                    } else {
+                      // Fallback if no phone is saved
+                      waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+                    }
+                    window.open(waUrl, '_blank');
+                    setSaleSuccessData(null);
+                  }}
+                >
+                  <MessageCircle size={18} /> Send WhatsApp
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BottomNav />
     </>
   );
@@ -144,10 +236,13 @@ export default function App() {
   return (
     <AppProvider>
       <Routes>
-        <Route path="/" element={<Layout />}>
+        <Route path="/login" element={<Login />} />
+        
+        <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"  element={<Dashboard />}  />
           <Route path="inventory"  element={<Inventory />}  />
+          <Route path="inventory/:batchId" element={<BatchDetails />} />
           <Route path="ledger"     element={<Ledger />}     />
           <Route path="sales"      element={<Sales />}      />
           <Route path="purchases"  element={<Purchases />}  />

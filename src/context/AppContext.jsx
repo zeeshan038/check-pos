@@ -2,7 +2,8 @@
 // Global app state — modal visibility + live Firestore shopkeepers
 import { createContext, useContext, useState, useEffect } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { db } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, auth } from '../firebase';
 
 const AppContext = createContext(null);
 
@@ -11,6 +12,18 @@ export function useApp() {
 }
 
 export function AppProvider({ children }) {
+  // ── Auth state ───────────────────────────────────────────────────────────
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // ── Modal state ──────────────────────────────────────────────────────────
   const [showNewSaleModal, setShowNewSaleModal]           = useState(false);
   const [showAddShopkeeperModal, setShowAddShopkeeperModal] = useState(false);
@@ -47,6 +60,10 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider
       value={{
+        // Auth
+        user,
+        authLoading,
+
         // Global Search
         globalSearchQuery,
         setGlobalSearchQuery,

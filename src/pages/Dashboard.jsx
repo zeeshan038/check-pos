@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  TrendingUp, AlertCircle, Wallet, Scale, Package, Plus,
+  TrendingUp, AlertCircle, Wallet, Scale, Package, Plus, Calendar, DollarSign
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -23,6 +23,8 @@ export default function Dashboard() {
   const [salesData, setSalesData] = useState([]);
   const [inventoryBatches, setInventoryBatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  const [selectedDate, setSelectedDate] = useState('');
 
   useEffect(() => {
     // Listen to sales
@@ -49,25 +51,55 @@ export default function Dashboard() {
   }, []);
 
   const stats = useMemo(() => {
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const currentMonthStr = today.split(' ').slice(1).join(' '); // e.g. "Aug 2026"
+    let targetDayStr;
+    let targetMonthStr;
+    let isFiltering = false;
 
-    let soldToday = 0;
-    let revenueMonth = 0;
-    let salesMonthMans = 0;
+    if (selectedDate) {
+      const d = new Date(selectedDate);
+      targetDayStr = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      targetMonthStr = targetDayStr.split(' ').slice(1).join(' '); // e.g. "Sep 2026"
+      isFiltering = true;
+    } else {
+      targetDayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      targetMonthStr = targetDayStr.split(' ').slice(1).join(' '); // e.g. "Sep 2026"
+    }
+
+    let soldTargetDay = 0;
+    let revenueTargetMonth = 0;
+    let salesTargetMonthMans = 0;
+    let profitTargetMonth = 0;
+
+    const batchPrices = {};
+    inventoryBatches.forEach(b => {
+      batchPrices[b.id] = parseFloat(b.price || 0);
+    });
 
     salesData.forEach(sale => {
       const weight = parseFloat(sale.weight || 0);
       const total = parseFloat(sale.total || 0);
+      const costPerMan = batchPrices[sale.batchId] || parseFloat(sale.rate || 0); // fallback if batch not found
+      const cost = costPerMan * weight;
+      const profit = total - cost;
       
-      // Today
-      if (sale.date === today) {
-        soldToday += weight;
-      }
-      // This Month (basic check using string matching "Aug 2026")
-      if (sale.date && sale.date.includes(currentMonthStr)) {
-        revenueMonth += total;
-        salesMonthMans += weight;
+      if (isFiltering) {
+        // If a specific date is selected, ALL stats reflect that exact date
+        if (sale.date === targetDayStr) {
+          soldTargetDay += weight;
+          revenueTargetMonth += total;
+          salesTargetMonthMans += weight;
+          profitTargetMonth += profit;
+        }
+      } else {
+        // Default behavior: Target Day for "Sold Today", Target Month for others
+        if (sale.date === targetDayStr) {
+          soldTargetDay += weight;
+        }
+        if (sale.date && sale.date.includes(targetMonthStr)) {
+          revenueTargetMonth += total;
+          salesTargetMonthMans += weight;
+          profitTargetMonth += profit;
+        }
       }
     });
 
@@ -79,12 +111,16 @@ export default function Dashboard() {
     });
 
     return {
-      soldToday: `${soldToday.toFixed(1)} Mans`,
-      revenueMonth: `₨ ${revenueMonth.toLocaleString()}`,
-      salesMonth: `${salesMonthMans.toFixed(1)} Mans`,
+      soldToday: `${soldTargetDay.toFixed(1)} Mans`,
+      revenueMonth: `₨ ${revenueTargetMonth.toLocaleString()}`,
+      salesMonth: `${salesTargetMonthMans.toFixed(1)} Mans`,
+      profitMonth: `₨ ${profitTargetMonth.toLocaleString()}`,
       pendingPayments: `₨ ${pendingPayments.toLocaleString()}`,
+      isFiltering,
+      targetDayStr,
+      targetMonthStr
     };
-  }, [salesData, shopkeepers]);
+  }, [salesData, shopkeepers, selectedDate, inventoryBatches]);
 
   const chartData = useMemo(() => {
     // Group sales by date
@@ -121,15 +157,36 @@ export default function Dashboard() {
   return (
     <div className="animate-fade-in">
       <GlobalHeader
-        title="Assalamu Alaikum, Dawood 👋"
+        title="Assalamu Alaikum👋"
         subtitle={`Overview • ${currentDate}`}
       />
+
+      {/* Date Filter */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#18181b', padding: '8px 16px', borderRadius: '8px', border: '1px solid #27272a' }}>
+          <Calendar size={18} className="text-secondary" />
+          <input 
+            type="date" 
+            style={{ background: 'transparent', border: 'none', color: '#fafafa', outline: 'none' }}
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+          />
+        </div>
+        {selectedDate && (
+          <button 
+            style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}
+            onClick={() => setSelectedDate('')}
+          >
+            Clear Filter
+          </button>
+        )}
+      </div>
 
       {/* ── KPI Cards ── */}
       <div className="grid-stats">
         <div className="floating-card">
           <div className="stat-card-header">
-            <p className="text-sm text-secondary">Total Sold Today</p>
+            <p className="text-sm text-secondary">{stats.isFiltering ? `Sold on ${stats.targetDayStr}` : 'Total Sold Today'}</p>
             <div className="stat-icon text-accent"><Scale size={16} /></div>
           </div>
           <h2 className="text-2xl text-accent">
@@ -138,7 +195,7 @@ export default function Dashboard() {
         </div>
         <div className="floating-card">
           <div className="stat-card-header">
-            <p className="text-sm text-secondary">Revenue This Month</p>
+            <p className="text-sm text-secondary">{stats.isFiltering ? `Revenue on ${stats.targetDayStr}` : 'Revenue This Month'}</p>
             <div className="stat-icon text-success"><TrendingUp size={16} /></div>
           </div>
           <h2 className="text-2xl text-success">
@@ -147,11 +204,20 @@ export default function Dashboard() {
         </div>
         <div className="floating-card">
           <div className="stat-card-header">
-            <p className="text-sm text-secondary">Sales This Month</p>
+            <p className="text-sm text-secondary">{stats.isFiltering ? `Sales on ${stats.targetDayStr}` : 'Sales This Month'}</p>
             <div className="stat-icon text-primary"><Package size={16} /></div>
           </div>
           <h2 className="text-2xl">
             {loading ? <span className="modal-spinner" style={{ width: 20, height: 20 }}/> : stats.salesMonth}
+          </h2>
+        </div>
+        <div className="floating-card">
+          <div className="stat-card-header">
+            <p className="text-sm text-secondary">{stats.isFiltering ? `Profit on ${stats.targetDayStr}` : 'Profit This Month'}</p>
+            <div className="stat-icon text-success" style={{ color: '#22c55e' }}><DollarSign size={16} /></div>
+          </div>
+          <h2 className="text-2xl" style={{ color: '#22c55e' }}>
+            {loading ? <span className="modal-spinner" style={{ width: 20, height: 20 }}/> : stats.profitMonth}
           </h2>
         </div>
         <div className="floating-card" style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
@@ -256,6 +322,7 @@ export default function Dashboard() {
                     <th>Weight</th>
                     <th>Rate / Man</th>
                     <th>Total Amount</th>
+                    <th>Profit</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -270,19 +337,27 @@ export default function Dashboard() {
                       );
                     })
                     .slice(0, 4)
-                    .map((sale) => (
-                    <tr key={sale.id}>
-                      <td className="font-bold text-primary">{sale.shopkeeperName}</td>
-                      <td>{sale.weight} Mans</td>
-                      <td>₨ {parseFloat(sale.rate).toLocaleString()}</td>
-                      <td className="font-bold text-accent">₨ {parseFloat(sale.total).toLocaleString()}</td>
-                      <td>
-                        <span className={`badge ${sale.paymentStatus === 'Paid' ? 'badge-success' : 'badge-warning'}`}>
-                          {sale.paymentStatus}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                    .map((sale) => {
+                      const batch = inventoryBatches.find(b => b.id === sale.batchId);
+                      const costPerMan = batch ? parseFloat(batch.price || 0) : parseFloat(sale.rate || 0);
+                      const cost = costPerMan * parseFloat(sale.weight || 0);
+                      const profit = parseFloat(sale.total || 0) - cost;
+                      
+                      return (
+                      <tr key={sale.id}>
+                        <td className="font-bold text-primary">{sale.shopkeeperName}</td>
+                        <td>{sale.weight} Mans</td>
+                        <td>₨ {parseFloat(sale.rate).toLocaleString()}</td>
+                        <td className="font-bold text-accent">₨ {parseFloat(sale.total).toLocaleString()}</td>
+                        <td className="font-bold" style={{ color: '#22c55e' }}>₨ {parseFloat(profit).toLocaleString()}</td>
+                        <td>
+                          <span className={`badge ${sale.paymentStatus === 'Paid' ? 'badge-success' : 'badge-warning'}`}>
+                            {sale.paymentStatus}
+                          </span>
+                        </td>
+                      </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             ) : (

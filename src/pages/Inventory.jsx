@@ -1,13 +1,14 @@
-// src/pages/Inventory.jsx
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Archive, Banknote, AlertTriangle, MoreVertical, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Archive, Banknote, AlertTriangle, MoreVertical, X, Eye, Edit2, Trash2 } from 'lucide-react';
 import GlobalHeader from '../components/GlobalHeader';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { useApp } from '../context/AppContext';
 
 export default function Inventory() {
+  const navigate = useNavigate();
   const { globalSearchQuery } = useApp();
   const [inventoryFilter, setInventoryFilter] = useState('All');
   const [inventoryBatches, setInventoryBatches] = useState([]);
@@ -19,6 +20,20 @@ export default function Inventory() {
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [saleWeight, setSaleWeight] = useState('');
+  const [saleShopkeeper, setSaleShopkeeper] = useState('');
+
+  const [activeDropdown, setActiveDropdown] = useState(null);
+  const [editBatch, setEditBatch] = useState(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.action-dropdown-container')) {
+        setActiveDropdown(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, 'inventoryBatches'), orderBy('createdAt', 'desc'));
@@ -59,9 +74,47 @@ export default function Inventory() {
     setIsSubmitting(false);
   };
 
+  const handleDeleteBatch = async (batchId) => {
+    if (window.confirm('Are you sure you want to delete this batch? This action cannot be undone.')) {
+      try {
+        await deleteDoc(doc(db, 'inventoryBatches', batchId));
+      } catch (error) {
+        console.error("Error deleting batch: ", error);
+      }
+    }
+  };
+
+  const handleUpdateBatch = async (e) => {
+    e.preventDefault();
+    if (!editBatch.supplier || !editBatch.weight || !editBatch.price) return;
+    setIsSubmitting(true);
+    try {
+      const weightDiff = parseFloat(editBatch.weight) - parseFloat(editBatch.originalWeight);
+      const newRemaining = parseFloat(editBatch.remaining) + weightDiff;
+      
+      let newStatus = 'In Stock';
+      if (newRemaining <= 0) newStatus = 'Sold Out';
+      else if (newRemaining <= 20) newStatus = 'Low';
+
+      const batchRef = doc(db, 'inventoryBatches', editBatch._id);
+      await updateDoc(batchRef, {
+        supplier: editBatch.supplier,
+        weight: editBatch.weight,
+        remaining: newRemaining.toString(),
+        price: editBatch.price,
+        status: newStatus
+      });
+      setEditBatch(null);
+    } catch (error) {
+      console.error("Error updating batch: ", error);
+    }
+    setIsSubmitting(false);
+  };
+
   const handleSaleClick = (batch) => {
     setSelectedBatch(batch);
     setSaleWeight('');
+    setSaleShopkeeper('');
     setIsSaleModalOpen(true);
   };
 
@@ -88,9 +141,24 @@ export default function Inventory() {
         status: newStatus
       });
 
+      const totalSaleValue = deducted * parseFloat(selectedBatch.price || 0);
+      const formattedDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      
+      await addDoc(collection(db, 'sales'), {
+        shopkeeperName: saleShopkeeper || 'Walk-in Customer',
+        batchId: selectedBatch.id,
+        weight: deducted.toString(),
+        rate: selectedBatch.price || 0,
+        total: totalSaleValue,
+        paymentStatus: 'Paid',
+        date: formattedDate,
+        createdAt: serverTimestamp()
+      });
+
       setIsSaleModalOpen(false);
       setSelectedBatch(null);
       setSaleWeight('');
+      setSaleShopkeeper('');
     } catch (error) {
       console.error("Error updating batch: ", error);
     }
@@ -220,14 +288,18 @@ export default function Inventory() {
                       </span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <button 
-                        className="icon-btn hover:text-accent transition-colors" 
-                        style={{ width: '32px', height: '32px', display: 'inline-flex', backgroundColor: 'transparent', border: 'none' }}
-                        onClick={() => handleSaleClick(batch)}
-                        title="Quick Sale"
-                      >
-                        <MoreVertical size={18} />
-                      </button>
+                      <div className="flex justify-end gap-2">
+                     
+                        <button type="button" className="row-action-btn" onClick={() => navigate('/inventory/' + batch.id)}>
+                          <Eye size={14} /> View Details
+                        </button>
+                        <button type="button" className="row-action-btn" onClick={() => setEditBatch({...batch, originalWeight: batch.weight})}>
+                          <Edit2 size={14} /> Edit Batch
+                        </button>
+                        <button type="button" className="row-action-btn danger" onClick={() => handleDeleteBatch(batch._id || batch.id)}>
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -248,14 +320,40 @@ export default function Inventory() {
                     <h3 className="font-bold text-primary">{batch.id}</h3>
                     <span className="text-xs text-secondary">{batch.supplier} • {batch.date}</span>
                   </div>
-                  <button 
-                    className="icon-btn hover:text-accent transition-colors" 
-                    style={{ width: '28px', height: '28px', backgroundColor: 'transparent', border: 'none' }}
-                    onClick={() => handleSaleClick(batch)}
-                    title="Quick Sale"
-                  >
-                    <MoreVertical size={18} />
-                  </button>
+                  <div className="action-dropdown-container flex gap-2">
+                    <button 
+                      className="icon-btn hover:text-success transition-colors" 
+                      style={{ width: '28px', height: '28px', backgroundColor: 'transparent', border: 'none' }}
+                      onClick={() => handleSaleClick(batch)}
+                      title="Quick Sale"
+                    >
+                      <Banknote size={16} />
+                    </button>
+                    <button 
+                      className="icon-btn hover:text-accent transition-colors" 
+                      style={{ width: '28px', height: '28px', backgroundColor: 'transparent', border: 'none' }}
+                      onClick={() => navigate('/inventory/' + batch.id)}
+                      title="View Details"
+                    >
+                      <Eye size={16} />
+                    </button>
+                    <button 
+                      className="icon-btn hover:text-accent transition-colors" 
+                      style={{ width: '28px', height: '28px', backgroundColor: 'transparent', border: 'none' }}
+                      onClick={() => setEditBatch({...batch, originalWeight: batch.weight})}
+                      title="Edit Batch"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      className="icon-btn hover:text-danger transition-colors" 
+                      style={{ width: '28px', height: '28px', backgroundColor: 'transparent', border: 'none' }}
+                      onClick={() => handleDeleteBatch(batch._id || batch.id)}
+                      title="Delete Batch"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-4 mb-3">
                   <div className="flex justify-between text-xs mb-1">
@@ -278,60 +376,73 @@ export default function Inventory() {
       </div>
 
       {/* ── Add Batch Modal ── */}
-      {/* ── Add Batch Modal ── */}
       {isModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4">
-          <div className="floating-card w-full max-w-md p-6 relative">
-            <button 
-              className="absolute top-4 right-4 text-secondary hover:text-primary transition-colors"
-              onClick={() => setIsModalOpen(false)}
-            >
-              <X size={20} />
-            </button>
-            <h2 className="text-xl font-bold mb-6 text-primary">Add New Batch</h2>
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-box" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <div className="modal-icon"><Plus size={20} /></div>
+                <div>
+                  <h2 className="modal-title">Add New Batch</h2>
+                  <p className="modal-subtitle">Record a new poultry stock arrival</p>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setIsModalOpen(false)}><X size={20} /></button>
+            </div>
+            
             <form onSubmit={handleAddBatch}>
-              <div className="mb-4">
-                <label className="block text-sm text-secondary mb-2">Supplier Name</label>
-                <input 
-                  type="text" 
-                  className="w-full bg-[#18181b] border border-[#27272a] rounded-lg px-4 py-2 text-primary focus:outline-none focus:border-accent transition-colors"
-                  style={{ backgroundColor: '#18181b', color: '#fff', borderColor: '#27272a' }}
-                  placeholder="e.g. Mian Farms"
-                  value={newBatch.supplier}
-                  onChange={(e) => setNewBatch({ ...newBatch, supplier: e.target.value })}
-                  required
-                />
+              <div className="modal-body" style={{ gap: '16px' }}>
+                <div className="modal-field">
+                  <label className="modal-label">Supplier Name <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="text" 
+                      className="modal-input"
+                      placeholder="e.g. Mian Farms"
+                      value={newBatch.supplier}
+                      onChange={(e) => setNewBatch({ ...newBatch, supplier: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div className="modal-field">
+                  <label className="modal-label">Total Weight (Mans) <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      className="modal-input"
+                      placeholder="e.g. 200"
+                      value={newBatch.weight}
+                      onChange={(e) => setNewBatch({ ...newBatch, weight: e.target.value })}
+                      required
+                    />
+                    <span className="input-suffix">Man</span>
+                  </div>
+                </div>
+                
+                <div className="modal-field">
+                  <label className="modal-label">Price per Man (₨) <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <span className="input-prefix">₨</span>
+                    <input 
+                      type="number" 
+                      step="1"
+                      className="modal-input"
+                      placeholder="e.g. 12000"
+                      value={newBatch.price}
+                      onChange={(e) => setNewBatch({ ...newBatch, price: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-sm text-secondary mb-2">Total Weight (Mans)</label>
-                <input 
-                  type="number" 
-                  step="0.1"
-                  className="w-full bg-[#18181b] border border-[#27272a] rounded-lg px-4 py-2 text-primary focus:outline-none focus:border-accent transition-colors"
-                  style={{ backgroundColor: '#18181b', color: '#fff', borderColor: '#27272a' }}
-                  placeholder="e.g. 200"
-                  value={newBatch.weight}
-                  onChange={(e) => setNewBatch({ ...newBatch, weight: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm text-secondary mb-2">Price per Man (₨)</label>
-                <input 
-                  type="number" 
-                  step="1"
-                  className="w-full bg-[#18181b] border border-[#27272a] rounded-lg px-4 py-2 text-primary focus:outline-none focus:border-accent transition-colors"
-                  style={{ backgroundColor: '#18181b', color: '#fff', borderColor: '#27272a' }}
-                  placeholder="e.g. 12000"
-                  value={newBatch.price}
-                  onChange={(e) => setNewBatch({ ...newBatch, price: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-3">
+
+              <div className="modal-footer">
                 <button 
                   type="button" 
-                  className="px-4 py-2 text-secondary hover:text-primary transition-colors"
+                  className="modal-cancel"
                   onClick={() => setIsModalOpen(false)}
                 >
                   Cancel
@@ -339,10 +450,9 @@ export default function Inventory() {
                 <button 
                   type="submit" 
                   disabled={isSubmitting}
-                  className="action-btn"
-                  style={{ backgroundColor: 'var(--accent-primary)', color: '#fff', border: 'none' }}
+                  className="modal-submit"
                 >
-                  {isSubmitting ? 'Adding...' : 'Save Batch'}
+                  <Plus size={18} /> {isSubmitting ? 'Adding...' : 'Save Batch'}
                 </button>
               </div>
             </form>
@@ -353,38 +463,66 @@ export default function Inventory() {
 
       {/* ── Quick Sale Modal ── */}
       {isSaleModalOpen && selectedBatch && createPortal(
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4">
-          <div className="floating-card w-full max-w-md p-6 relative">
-            <button 
-              className="absolute top-4 right-4 text-secondary hover:text-primary transition-colors"
-              onClick={() => setIsSaleModalOpen(false)}
-            >
-              <X size={20} />
-            </button>
-            <h2 className="text-xl font-bold mb-2 text-primary">Quick Sale</h2>
-            <p className="text-sm text-secondary mb-6">
-              Batch: <span className="text-accent">{selectedBatch.id}</span> ({selectedBatch.supplier}) <br/>
-              Current Stock: <span className="font-bold text-primary">{selectedBatch.remaining} Mans</span>
-            </p>
-            <form onSubmit={handleMakeSale}>
-              <div className="mb-6">
-                <label className="block text-sm text-secondary mb-2">Mans Sold</label>
-                <input 
-                  type="number" 
-                  step="0.1"
-                  max={selectedBatch.remaining}
-                  className="w-full bg-[#18181b] border border-[#27272a] rounded-lg px-4 py-2 text-primary focus:outline-none focus:border-accent transition-colors"
-                  style={{ backgroundColor: '#18181b', color: '#fff', borderColor: '#27272a' }}
-                  placeholder="e.g. 15"
-                  value={saleWeight}
-                  onChange={(e) => setSaleWeight(e.target.value)}
-                  required
-                />
+        <div className="modal-overlay" onClick={() => setIsSaleModalOpen(false)}>
+          <div className="modal-box" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <div className="modal-icon"><Banknote size={20} /></div>
+                <div>
+                  <h2 className="modal-title">Quick Sale</h2>
+                  <p className="modal-subtitle">Fast stock deduction for {selectedBatch.id}</p>
+                </div>
               </div>
-              <div className="flex justify-end gap-3">
+              <button className="modal-close" onClick={() => setIsSaleModalOpen(false)}><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleMakeSale}>
+              <div className="modal-body" style={{ gap: '16px' }}>
+                <div style={{ background: 'rgba(59,130,246,0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
+                  <p className="text-sm text-secondary mb-1">
+                    Batch: <span className="text-accent">{selectedBatch.id}</span> ({selectedBatch.supplier})
+                  </p>
+                  <p className="text-sm mb-0">
+                    Current Stock: <span className="font-bold text-primary">{selectedBatch.remaining} Mans</span>
+                  </p>
+                </div>
+
+                <div className="modal-field">
+                  <label className="modal-label">Shopkeeper Name <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="text" 
+                      className="modal-input"
+                      placeholder="e.g. Ali Traders"
+                      value={saleShopkeeper}
+                      onChange={(e) => setSaleShopkeeper(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-field">
+                  <label className="modal-label">Mans Sold <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      max={selectedBatch.remaining}
+                      className="modal-input"
+                      placeholder="e.g. 15"
+                      value={saleWeight}
+                      onChange={(e) => setSaleWeight(e.target.value)}
+                      required
+                    />
+                    <span className="input-suffix">Man</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
                 <button 
                   type="button" 
-                  className="px-4 py-2 text-secondary hover:text-primary transition-colors"
+                  className="modal-cancel"
                   onClick={() => setIsSaleModalOpen(false)}
                 >
                   Cancel
@@ -392,10 +530,9 @@ export default function Inventory() {
                 <button 
                   type="submit" 
                   disabled={isSubmitting}
-                  className="action-btn"
-                  style={{ backgroundColor: 'var(--accent-primary)', color: '#fff', border: 'none' }}
+                  className="modal-submit"
                 >
-                  {isSubmitting ? 'Saving...' : 'Confirm Sale'}
+                  <Banknote size={18} /> {isSubmitting ? 'Saving...' : 'Confirm Sale'}
                 </button>
               </div>
             </form>
@@ -403,6 +540,90 @@ export default function Inventory() {
         </div>,
         document.body
       )}
+      {/* ── Edit Batch Modal ── */}
+      {editBatch && createPortal(
+        <div className="modal-overlay" onClick={() => setEditBatch(null)}>
+          <div className="modal-box" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <div className="modal-icon"><Edit2 size={20} /></div>
+                <div>
+                  <h2 className="modal-title">Edit Batch</h2>
+                  <p className="modal-subtitle">Modify details for batch {editBatch.id}</p>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setEditBatch(null)}><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleUpdateBatch}>
+              <div className="modal-body" style={{ gap: '16px' }}>
+                <div className="modal-field">
+                  <label className="modal-label">Supplier Name <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="text" 
+                      className="modal-input"
+                      value={editBatch.supplier}
+                      onChange={(e) => setEditBatch({ ...editBatch, supplier: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div className="modal-field">
+                  <label className="modal-label">Total Weight (Mans) <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      className="modal-input"
+                      value={editBatch.weight}
+                      onChange={(e) => setEditBatch({ ...editBatch, weight: e.target.value })}
+                      required
+                    />
+                    <span className="input-suffix">Man</span>
+                  </div>
+                </div>
+                
+                <div className="modal-field">
+                  <label className="modal-label">Price per Man (₨) <span className="req">*</span></label>
+                  <div className="modal-input-wrap">
+                    <span className="input-prefix">₨</span>
+                    <input 
+                      type="number" 
+                      step="1"
+                      className="modal-input"
+                      value={editBatch.price}
+                      onChange={(e) => setEditBatch({ ...editBatch, price: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="modal-cancel"
+                  onClick={() => setEditBatch(null)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className="modal-submit"
+                >
+                  <Edit2 size={18} /> {isSubmitting ? 'Saving...' : 'Update Batch'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+
     </div>
   );
 }
