@@ -12,6 +12,7 @@ export default function Inventory() {
   const { globalSearchQuery } = useApp();
   const [inventoryFilter, setInventoryFilter] = useState('All');
   const [inventoryBatches, setInventoryBatches] = useState([]);
+  const [sales, setSales] = useState([]);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBatch, setNewBatch] = useState({ supplier: '', weight: '', price: '' });
@@ -43,6 +44,17 @@ export default function Inventory() {
         batches.push({ _id: doc.id, ...doc.data() });
       });
       setInventoryBatches(batches);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'sales'), (snapshot) => {
+      const s = [];
+      snapshot.forEach((doc) => {
+        s.push({ _id: doc.id, ...doc.data() });
+      });
+      setSales(s);
     });
     return () => unsubscribe();
   }, []);
@@ -123,7 +135,7 @@ export default function Inventory() {
     if (!selectedBatch || !saleWeight) return;
     setIsSubmitting(true);
     try {
-      const currentRemaining = parseFloat(selectedBatch.remaining || 0);
+      const currentRemaining = parseFloat(selectedBatch.computedRemaining || selectedBatch.remaining || 0);
       const deducted = parseFloat(saleWeight);
       let newRemaining = currentRemaining - deducted;
       if (newRemaining < 0) newRemaining = 0;
@@ -165,13 +177,31 @@ export default function Inventory() {
     setIsSubmitting(false);
   };
 
-  const totalRemaining   = inventoryBatches.reduce((acc, b) => acc + parseFloat(b.remaining || 0), 0);
-  const estimatedValue   = inventoryBatches.reduce((acc, b) => acc + (parseFloat(b.remaining || 0) * (parseFloat(b.price) || 12000)), 0);
-  const lowBatchesCount  = inventoryBatches.filter(b => b.status === 'Low' || b.status === 'Sold Out').length;
+  const salesByBatch = sales.reduce((acc, sale) => {
+    if (!acc[sale.batchId]) acc[sale.batchId] = 0;
+    acc[sale.batchId] += (parseFloat(sale.weight) || 0);
+    return acc;
+  }, {});
+
+  const computedBatches = inventoryBatches.map(batch => {
+    const originalWeight = parseFloat(batch.weight) || 0;
+    const soldWeight = salesByBatch[batch.id] || 0;
+    const computedRemaining = Number((originalWeight - soldWeight).toFixed(2));
+    
+    let computedStatus = 'In Stock';
+    if (computedRemaining <= 0) computedStatus = 'Sold Out';
+    else if (computedRemaining <= 20) computedStatus = 'Low';
+
+    return { ...batch, computedRemaining, computedSold: soldWeight, computedStatus };
+  });
+
+  const totalRemaining   = computedBatches.reduce((acc, b) => acc + b.computedRemaining, 0);
+  const estimatedValue   = computedBatches.reduce((acc, b) => acc + (b.computedRemaining * (parseFloat(b.price) || 12000)), 0);
+  const lowBatchesCount  = computedBatches.filter(b => b.computedStatus === 'Low' || b.computedStatus === 'Sold Out').length;
   
-  const filtered = inventoryBatches.filter(b => {
+  const filtered = computedBatches.filter(b => {
     // 1. Tab filter
-    if (inventoryFilter !== 'All' && b.status !== inventoryFilter) return false;
+    if (inventoryFilter !== 'All' && b.computedStatus !== inventoryFilter) return false;
     
     // 2. Global search
     if (globalSearchQuery) {
@@ -261,8 +291,11 @@ export default function Inventory() {
             </thead>
             <tbody>
               {filtered.map(batch => {
-                const pct = (parseFloat(batch.remaining) / parseFloat(batch.weight)) * 100;
-                const barColor = batch.status === 'In Stock' ? 'var(--success)' : batch.status === 'Low' ? '#f59e0b' : 'var(--danger)';
+                const weight = parseFloat(batch.weight) || 0;
+                const remaining = batch.computedRemaining;
+                const sold = batch.computedSold;
+                const pct = weight > 0 ? (sold / weight) * 100 : 0;
+                const barColor = batch.computedStatus === 'In Stock' ? 'var(--success)' : batch.computedStatus === 'Low' ? '#f59e0b' : 'var(--danger)';
                 return (
                   <tr key={batch._id || batch.id}>
                     <td>
@@ -272,19 +305,19 @@ export default function Inventory() {
                     <td>{batch.date}</td>
                     <td style={{ width: '250px' }}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-secondary">{parseFloat((parseFloat(batch.weight) - parseFloat(batch.remaining)).toFixed(2))} Mans Sold</span>
+                        <span className="text-secondary">{parseFloat(sold.toFixed(2))} Mans Sold</span>
                         <span className="text-primary">{batch.weight} Total</span>
                       </div>
                       <div style={{ width: '100%', height: '6px', backgroundColor: '#27272a', borderRadius: '4px', overflow: 'hidden' }}>
                         <div style={{ width: `${pct}%`, height: '100%', backgroundColor: barColor, transition: 'width 0.3s ease' }} />
                       </div>
                     </td>
-                    <td className={`font-bold ${batch.status === 'Sold Out' ? 'text-danger' : 'text-accent'}`}>
-                      {parseFloat(Number(batch.remaining).toFixed(2))} <span className="text-xs font-normal text-secondary">Mans</span>
+                    <td className={`font-bold ${batch.computedStatus === 'Sold Out' ? 'text-danger' : 'text-accent'}`}>
+                      {parseFloat(remaining.toFixed(2))} <span className="text-xs font-normal text-secondary">Mans</span>
                     </td>
                     <td>
-                      <span className={`badge ${batch.status === 'In Stock' ? 'badge-success' : batch.status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>
-                        {batch.status}
+                      <span className={`badge ${batch.computedStatus === 'In Stock' ? 'badge-success' : batch.computedStatus === 'Low' ? 'badge-warning' : 'badge-danger'}`}>
+                        {batch.computedStatus}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -311,8 +344,11 @@ export default function Inventory() {
         {/* Mobile cards */}
         <div className="mobile-card-list pb-4 pt-4">
           {filtered.map(batch => {
-            const pct = (parseFloat(batch.remaining) / parseFloat(batch.weight)) * 100;
-            const barColor = batch.status === 'In Stock' ? 'var(--success)' : batch.status === 'Low' ? '#f59e0b' : 'var(--danger)';
+            const weight = parseFloat(batch.weight) || 0;
+            const remaining = batch.computedRemaining;
+            const sold = batch.computedSold;
+            const pct = weight > 0 ? (sold / weight) * 100 : 0;
+            const barColor = batch.computedStatus === 'In Stock' ? 'var(--success)' : batch.computedStatus === 'Low' ? '#f59e0b' : 'var(--danger)';
             return (
               <div key={batch._id || batch.id} className="floating-card" style={{ padding: '16px', boxShadow: 'none', background: '#18181b' }}>
                 <div className="flex justify-between items-start mb-3">
@@ -358,15 +394,15 @@ export default function Inventory() {
                 <div className="mt-4 mb-3">
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-secondary">{batch.weight} Mans Total</span>
-                    <span className={`font-bold ${batch.status === 'Sold Out' ? 'text-danger' : 'text-accent'}`}>{parseFloat(Number(batch.remaining).toFixed(2))} Left</span>
+                    <span className={`font-bold ${batch.computedStatus === 'Sold Out' ? 'text-danger' : 'text-accent'}`}>{parseFloat(remaining.toFixed(2))} Left</span>
                   </div>
                   <div style={{ width: '100%', height: '6px', backgroundColor: '#27272a', borderRadius: '4px', overflow: 'hidden' }}>
                     <div style={{ width: `${pct}%`, height: '100%', backgroundColor: barColor }} />
                   </div>
                 </div>
                 <div className="flex justify-end mt-2">
-                  <span className={`badge ${batch.status === 'In Stock' ? 'badge-success' : batch.status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>
-                    {batch.status}
+                  <span className={`badge ${batch.computedStatus === 'In Stock' ? 'badge-success' : batch.computedStatus === 'Low' ? 'badge-warning' : 'badge-danger'}`}>
+                    {batch.computedStatus}
                   </span>
                 </div>
               </div>
