@@ -100,7 +100,7 @@ export default function BatchDetails() {
   // Derived calculations
   const originalWeight = parseFloat(batch.weight) || 0;
   const remainingWeight = parseFloat(batch.remaining) || 0;
-  const totalSoldWeight = originalWeight - remainingWeight;
+  const totalSoldWeight = sales.reduce((acc, sale) => acc + (parseFloat(sale.weight) || 0), 0);
   const ratePerMan = parseFloat(batch.price) || 0;
   
   const totalRevenue = sales.reduce((acc, sale) => acc + (parseFloat(sale.total) || 0), 0);
