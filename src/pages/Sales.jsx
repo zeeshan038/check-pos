@@ -27,7 +27,7 @@ export default function Sales() {
     const unsubBatches = onSnapshot(qBatches, (snapshot) => {
       const batches = [];
       snapshot.forEach((doc) => {
-        batches.push({ id: doc.id, ...doc.data() });
+        batches.push({ _id: doc.id, id: doc.id, ...doc.data() });
       });
       setInventoryBatches(batches);
     });
@@ -73,10 +73,26 @@ export default function Sales() {
       // 2. Rollback inventory batch
       if (sale.batchId) {
         try {
-          const batchRef = doc(db, 'inventoryBatches', sale.batchId);
-          await updateDoc(batchRef, {
-            remainingWeight: increment(parseFloat(sale.weight || 0))
-          });
+          // Find the batch by its logical ID (B-xxxx)
+          // In Sales.jsx we pushed { id: doc.id, ...doc.data() } which means doc.data().id overwrote it.
+          // Let's use the actual array we have in state. Wait, we don't have the firestore doc ID if it was overwritten.
+          // Let's update how we fetch inventoryBatches to store _id as well, then use it here.
+          const batch = inventoryBatches.find(b => b.id === sale.batchId || b.batchId === sale.batchId);
+          if (batch && batch._id) {
+            const currentRemaining = parseFloat(batch.remaining || 0);
+            const addedWeight = parseFloat(sale.weight || 0);
+            const newRemaining = currentRemaining + addedWeight;
+            
+            let newStatus = 'In Stock';
+            if (newRemaining <= 0) newStatus = 'Sold Out';
+            else if (newRemaining <= 20) newStatus = 'Low';
+
+            const batchRef = doc(db, 'inventoryBatches', batch._id);
+            await updateDoc(batchRef, {
+              remaining: newRemaining.toString(),
+              status: newStatus
+            });
+          }
         } catch (err) {
           console.warn("Could not update inventory batch (maybe deleted?):", err);
         }

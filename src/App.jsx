@@ -25,19 +25,42 @@ import { collection, addDoc, updateDoc, doc, serverTimestamp, getDoc, query, ord
 function Layout() {
   const { showNewSaleModal, closeSaleModal, shopkeepers } = useApp();
   const [inventoryBatches, setInventoryBatches] = useState([]);
+  const [salesData, setSalesData] = useState([]);
   const [saleSuccessData, setSaleSuccessData] = useState(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'inventoryBatches'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const qBatches = query(collection(db, 'inventoryBatches'), orderBy('createdAt', 'desc'));
+    const unsubBatches = onSnapshot(qBatches, (snapshot) => {
       const batches = [];
       snapshot.forEach((doc) => {
         batches.push({ _id: doc.id, ...doc.data() });
       });
       setInventoryBatches(batches);
     });
-    return () => unsubscribe();
+
+    const qSales = query(collection(db, 'sales'), orderBy('createdAt', 'desc'));
+    const unsubSales = onSnapshot(qSales, (snapshot) => {
+      const sales = [];
+      snapshot.forEach((doc) => {
+        sales.push({ _id: doc.id, ...doc.data() });
+      });
+      setSalesData(sales);
+    });
+
+    return () => {
+      unsubBatches();
+      unsubSales();
+    };
   }, []);
+
+  const computedBatches = inventoryBatches.map(batch => {
+    const originalWeight = parseFloat(batch.weight) || 0;
+    const soldWeight = salesData
+      .filter(s => s.batchId === batch.id)
+      .reduce((sum, s) => sum + (parseFloat(s.weight) || 0), 0);
+    const computedRemaining = Number((originalWeight - soldWeight).toFixed(2));
+    return { ...batch, remaining: computedRemaining };
+  });
 
   const handleSaveSale = async (data) => {
     try {
@@ -159,7 +182,7 @@ function Layout() {
         <NewSaleModal
           onClose={closeSaleModal}
           onSave={handleSaveSale}
-          batches={inventoryBatches}
+          batches={computedBatches}
           shopkeepers={shopkeepers}
         />
       )}
