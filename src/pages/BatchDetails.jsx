@@ -273,7 +273,7 @@ export default function BatchDetails() {
                         <span className="font-bold text-white">{sale.shopkeeperName}</span>
                         {sale.notes && <div className="text-xs text-secondary mt-1">Note: {sale.notes}</div>}
                       </td>
-                      <td className="font-medium text-accent">{sale.weight} Mans</td>
+                      <td className="font-medium text-accent">{parseFloat(Number(sale.weight).toFixed(2))} Mans</td>
                       <td className="text-secondary">₨ {parseFloat(sale.rate).toLocaleString()}</td>
                       <td className="font-bold text-success">₨ {parseFloat(sale.total).toLocaleString()}</td>
                       <td>

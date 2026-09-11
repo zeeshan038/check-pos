@@ -195,7 +195,7 @@ export default function Inventory() {
             <p className="text-sm text-secondary">Total Available Stock</p>
             <Archive size={18} className="text-primary" />
           </div>
-          <h2 className="text-2xl text-primary">{totalRemaining} Mans</h2>
+          <h2 className="text-2xl text-primary">{parseFloat(totalRemaining.toFixed(2))} Mans</h2>
         </div>
 
         <div
@@ -272,7 +272,7 @@ export default function Inventory() {
                     <td>{batch.date}</td>
                     <td style={{ width: '250px' }}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-secondary">{parseFloat(batch.weight) - parseFloat(batch.remaining)} Mans Sold</span>
+                        <span className="text-secondary">{parseFloat((parseFloat(batch.weight) - parseFloat(batch.remaining)).toFixed(2))} Mans Sold</span>
                         <span className="text-primary">{batch.weight} Total</span>
                       </div>
                       <div style={{ width: '100%', height: '6px', backgroundColor: '#27272a', borderRadius: '4px', overflow: 'hidden' }}>
@@ -280,7 +280,7 @@ export default function Inventory() {
                       </div>
                     </td>
                     <td className={`font-bold ${batch.status === 'Sold Out' ? 'text-danger' : 'text-accent'}`}>
-                      {batch.remaining} <span className="text-xs font-normal text-secondary">Mans</span>
+                      {parseFloat(Number(batch.remaining).toFixed(2))} <span className="text-xs font-normal text-secondary">Mans</span>
                     </td>
                     <td>
                       <span className={`badge ${batch.status === 'In Stock' ? 'badge-success' : batch.status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>
@@ -358,7 +358,7 @@ export default function Inventory() {
                 <div className="mt-4 mb-3">
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-secondary">{batch.weight} Mans Total</span>
-                    <span className={`font-bold ${batch.status === 'Sold Out' ? 'text-danger' : 'text-accent'}`}>{batch.remaining} Left</span>
+                    <span className={`font-bold ${batch.status === 'Sold Out' ? 'text-danger' : 'text-accent'}`}>{parseFloat(Number(batch.remaining).toFixed(2))} Left</span>
                   </div>
                   <div style={{ width: '100%', height: '6px', backgroundColor: '#27272a', borderRadius: '4px', overflow: 'hidden' }}>
                     <div style={{ width: `${pct}%`, height: '100%', backgroundColor: barColor }} />
@@ -483,7 +483,7 @@ export default function Inventory() {
                     Batch: <span className="text-accent">{selectedBatch.id}</span> ({selectedBatch.supplier})
                   </p>
                   <p className="text-sm mb-0">
-                    Current Stock: <span className="font-bold text-primary">{selectedBatch.remaining} Mans</span>
+                    Current Stock: <span className="font-bold text-primary">{parseFloat(Number(selectedBatch.remaining).toFixed(2))} Mans</span>
                   </p>
                 </div>
 
